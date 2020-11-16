@@ -1,6 +1,5 @@
 package net.programmer.igoodie.twitchspawn.tslanguage.event;
 
-import net.programmer.igoodie.twitchspawn.tslanguage.EventArguments;
 import net.programmer.igoodie.twitchspawn.tslanguage.TSLFlowNode;
 import net.programmer.igoodie.twitchspawn.tslanguage.action.TSLAction;
 import net.programmer.igoodie.twitchspawn.tslanguage.predicate.TSLPredicate;
@@ -67,5 +66,16 @@ public class TSLEvent implements TSLFlowNode {
         return success;
     }
 
+    @Override
+    public boolean willPerform(EventArguments args) {
+        if (!args.eventName.equalsIgnoreCase(this.name)) return false;
+
+        for (TSLFlowNode nextNode : nextNodes) {
+            if (nextNode.willPerform(args))
+                return true;
+        }
+
+        return false;
+    }
 }
 

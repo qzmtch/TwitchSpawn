@@ -36,7 +36,7 @@ public class TSLParser {
             String fractionGroup = matcher.group("fraction");
 
             int decimal = Integer.parseInt(decimalGroup);
-            int fraction = fractionGroup == null ? 0 : Integer.parseInt(fractionGroup);
+            int fraction = fractionGroup == null ? 0 : Integer.parseInt(String.format("%-2s", fractionGroup).replace(' ', '0'));
 
             return decimal * 100 + fraction;
 
@@ -68,6 +68,13 @@ public class TSLParser {
                     throw new TSLSyntaxError("Expected word after %s", TSLRuleTokenizer.DISPLAY_KEYWORD);
 
                 String jsonString = words.get(i + 1);
+
+                // Yet another hack for backwards compatibility
+                if (jsonString.equalsIgnoreCase("NOTHING")) {
+                    JsonArray displayNothing = new JsonArray();
+                    displayNothing.add("NOTHING_0xDEADC0DE_0xDEADBEEF"); // <-- Super hyper mega hacker move
+                    return displayNothing;
+                }
 
                 try {
                     JsonArray parsedMessage = new JsonParser().parse(jsonString).getAsJsonArray();
@@ -105,7 +112,8 @@ public class TSLParser {
             if (e.getCause() instanceof TSLSyntaxError)
                 throw (TSLSyntaxError) e.getCause();
             e.getCause().printStackTrace();
-            throw new InternalError("Constructor threw unexpected Throwable: " + e.getCause().getClass().getSimpleName());
+            throw new InternalError("Constructor threw unexpected Throwable: " + e.getClass().getSimpleName()
+                    , e.getCause());
 
         } catch (ClassCastException e) {
             throw new InternalError("Cannot cast " + actionClass.getSimpleName() + " to " + TSLAction.class.getSimpleName());

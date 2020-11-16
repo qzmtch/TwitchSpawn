@@ -1,11 +1,12 @@
-package net.programmer.igoodie.twitchspawn.tslanguage;
+package net.programmer.igoodie.twitchspawn.tslanguage.event;
 
 import com.google.common.base.Defaults;
-import net.programmer.igoodie.twitchspawn.tslanguage.event.TSLEventPair;
 import net.programmer.igoodie.twitchspawn.tslanguage.keyword.TSLEventKeyword;
 
 import java.lang.reflect.Field;
+import java.util.HashSet;
 import java.util.Random;
+import java.util.Set;
 
 public class EventArguments {
 
@@ -38,10 +39,14 @@ public class EventArguments {
     public int viewerCount;
     public int raiderCount;
 
+    public String rewardTitle;
+    public Set<String> chatBadges;
+
     public EventArguments(String eventType, String eventAccount) {
         this.eventType = eventType;
         this.eventAccount = eventAccount;
         this.eventName = TSLEventKeyword.ofPair(eventType, eventAccount);
+        this.chatBadges = new HashSet<>();
     }
 
     public EventArguments(TSLEventPair eventPair) {

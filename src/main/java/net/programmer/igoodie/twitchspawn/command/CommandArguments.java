@@ -39,7 +39,11 @@ public class CommandArguments {
     }
 
     public static RequiredArgumentBuilder<CommandSource, CompoundNBT> nbtCompound(String name) {
-        return Commands.argument(name, NBTCompoundTagArgument.func_218043_a());
+        return Commands.argument(name, NBTCompoundTagArgument.nbt());
+    }
+
+    public static RequiredArgumentBuilder<CommandSource, String> tslWords(String name) {
+        return Commands.argument(name, TSLWordsArgumentType.tslWords());
     }
 
 }

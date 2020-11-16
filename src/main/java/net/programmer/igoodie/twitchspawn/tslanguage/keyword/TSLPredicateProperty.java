@@ -1,6 +1,6 @@
 package net.programmer.igoodie.twitchspawn.tslanguage.keyword;
 
-import net.programmer.igoodie.twitchspawn.tslanguage.EventArguments;
+import net.programmer.igoodie.twitchspawn.tslanguage.event.EventArguments;
 
 import java.lang.reflect.Field;
 import java.util.Arrays;
@@ -45,7 +45,14 @@ public enum TSLPredicateProperty {
             "raiderCount",
             "raiders", "raider_count"
     ),
-    ;
+    REWARD_TITLE(
+            "rewardTitle",
+            "title", "reward_title"
+    ),
+    CHAT_BADGES(
+            "chatBadges",
+            "badges", "chat_badges"
+    );
 
     public static boolean exists(String tslField) {
         for (TSLPredicateProperty property : values()) {

@@ -7,7 +7,6 @@ import com.mojang.brigadier.exceptions.CommandSyntaxException;
 import net.minecraft.command.CommandException;
 import net.minecraft.command.CommandSource;
 import net.minecraft.command.Commands;
-import net.minecraft.command.arguments.MessageArgument;
 import net.minecraft.entity.player.ServerPlayerEntity;
 import net.minecraft.nbt.CompoundNBT;
 import net.minecraft.network.play.server.STitlePacket;
@@ -17,7 +16,7 @@ import net.minecraft.util.text.TranslationTextComponent;
 import net.programmer.igoodie.twitchspawn.TwitchSpawn;
 import net.programmer.igoodie.twitchspawn.TwitchSpawnLoadingErrors;
 import net.programmer.igoodie.twitchspawn.configuration.ConfigManager;
-import net.programmer.igoodie.twitchspawn.tslanguage.EventArguments;
+import net.programmer.igoodie.twitchspawn.tslanguage.event.EventArguments;
 import net.programmer.igoodie.twitchspawn.tslanguage.TSLRuleset;
 import net.programmer.igoodie.twitchspawn.tslanguage.action.TSLAction;
 import net.programmer.igoodie.twitchspawn.tslanguage.event.TSLEvent;
@@ -27,51 +26,53 @@ import net.programmer.igoodie.twitchspawn.tslanguage.keyword.TSLEventKeyword;
 import net.programmer.igoodie.twitchspawn.tslanguage.parser.TSLParser;
 import net.programmer.igoodie.twitchspawn.tslanguage.parser.TSLSyntaxError;
 import net.programmer.igoodie.twitchspawn.tslanguage.parser.TSLTokenizer;
-import net.programmer.igoodie.twitchspawn.util.TimeTaskQueue;
+import net.programmer.igoodie.twitchspawn.eventqueue.EventQueue;
+import net.programmer.igoodie.twitchspawn.util.MCPHelpers;
 
-import java.util.Collection;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Set;
+import java.util.*;
 import java.util.stream.Stream;
 
 public class TwitchSpawnCommand {
 
-    public static final String COMMAND_NAME = "twitchspawn";
+    public static final String[] COMMAND_NAMES = {"twitchspawn", "ts"};
 
     public static void register(CommandDispatcher<CommandSource> dispatcher) {
-        LiteralArgumentBuilder<CommandSource> root = Commands.literal(COMMAND_NAME);
+        for (String commandName : COMMAND_NAMES) {
+            LiteralArgumentBuilder<CommandSource> root = Commands.literal(commandName);
 
-        root.then(Commands.literal("status").executes(TwitchSpawnCommand::statusModule));
-        root.then(Commands.literal("start").executes(TwitchSpawnCommand::startModule));
-        root.then(Commands.literal("stop").executes(TwitchSpawnCommand::stopModule));
+            root.then(Commands.literal("status").executes(TwitchSpawnCommand::statusModule));
+            root.then(Commands.literal("start").executes(TwitchSpawnCommand::startModule));
+            root.then(Commands.literal("stop").executes(TwitchSpawnCommand::stopModule));
 
-        root.then(Commands.literal("reloadcfg").executes(TwitchSpawnCommand::reloadModule));
+            root.then(Commands.literal("reloadcfg").executes(TwitchSpawnCommand::reloadModule));
 
-        root.then(Commands.literal("rules")
-                .executes(context -> rulesModule(context, null))
-                .then(CommandArguments.rulesetName("ruleset_name")
-                        .executes(context -> rulesModule(context, RulesetNameArgumentType.getRulesetName(context, "ruleset_name"))))
-        );
+            root.then(Commands.literal("quickrefresh").executes(TwitchSpawnCommand::quickRefreshModule));
 
-        root.then(Commands.literal("simulate")
-                .then(CommandArguments.nbtCompound("event_simulation_json")
-                        .executes(context -> simulateModule(context, null))
-                        .then(CommandArguments.streamer("streamer_nick")
-                                .executes(context -> simulateModule(context, StreamerArgumentType.getStreamer(context, "streamer_nick")))))
-        );
+            root.then(Commands.literal("rules")
+                    .executes(context -> rulesModule(context, null))
+                    .then(CommandArguments.rulesetName("ruleset_name")
+                            .executes(context -> rulesModule(context, RulesetNameArgumentType.getRulesetName(context, "ruleset_name"))))
+            );
 
-        root.then(Commands.literal("test")
-                .then(CommandArguments.streamer("streamer_nick")
-                        .executes(context -> testModule(context, StreamerArgumentType.getStreamer(context, "streamer_nick"))))
-        );
+            root.then(Commands.literal("simulate")
+                    .then(CommandArguments.nbtCompound("event_simulation_json")
+                            .executes(context -> simulateModule(context, null))
+                            .then(CommandArguments.streamer("streamer_nick")
+                                    .executes(context -> simulateModule(context, StreamerArgumentType.getStreamer(context, "streamer_nick")))))
+            );
 
-        root.then(Commands.literal("execute")
-                .then(Commands.argument("tsl_action", MessageArgument.message())
-                        .executes(TwitchSpawnCommand::executeModule))
-        );
+            root.then(Commands.literal("test")
+                    .then(CommandArguments.streamer("streamer_nick")
+                            .executes(context -> testModule(context, StreamerArgumentType.getStreamer(context, "streamer_nick"))))
+            );
 
-        dispatcher.register(root);
+            root.then(Commands.literal("execute")
+                    .then(CommandArguments.tslWords("tsl_action")
+                            .executes(TwitchSpawnCommand::executeModule))
+            );
+
+            dispatcher.register(root);
+        }
     }
 
     /* ------------------------------------------------------------ */
@@ -165,6 +166,25 @@ public class TwitchSpawnCommand {
         }
     }
 
+    public static int quickRefreshModule(CommandContext<CommandSource> context) {
+        String sourceNickname = context.getSource().getName();
+
+        if (!ConfigManager.CREDENTIALS.hasPermission(sourceNickname)) {
+            context.getSource().sendFeedback(new TranslationTextComponent(
+                    "commands.twitchspawn.reloadcfg.no_perm"), true);
+            TwitchSpawn.LOGGER.info("{} tried to run TwitchSpawn, but no permission", sourceNickname);
+            return 0;
+        }
+
+        if (TwitchSpawn.TRACE_MANAGER.isRunning()) {
+            TwitchSpawn.TRACE_MANAGER.stop(context.getSource(), "Quick refreshing");
+        }
+
+        reloadModule(context);
+        startModule(context);
+        return 1;
+    }
+
     /* ------------------------------------------------------------ */
 
     public static int rulesModule(CommandContext<CommandSource> context, String rulesetName) {
@@ -234,7 +254,7 @@ public class TwitchSpawnCommand {
 
             } else {
                 simulatedEvent.actorNickname = nbt.getString("actor").isEmpty() ? "SimulatorDude" : nbt.getString("actor");
-                simulatedEvent.message = "Simulating a message";
+                simulatedEvent.message = nbt.contains("message") ? nbt.getString("message") : "Simulating a message";
                 simulatedEvent.donationAmount = nbt.getDouble("amount");
                 simulatedEvent.donationCurrency = nbt.getString("currency");
                 simulatedEvent.subscriptionMonths = nbt.getInt("months");
@@ -242,6 +262,7 @@ public class TwitchSpawnCommand {
                 simulatedEvent.viewerCount = nbt.getInt("viewers");
                 simulatedEvent.subscriptionTier = nbt.contains("tier", 3) ? nbt.getInt("tier") : -1;
                 simulatedEvent.gifted = nbt.getBoolean("gifted");
+                simulatedEvent.rewardTitle = nbt.getString("title");
             }
 
             ConfigManager.RULESET_COLLECTION.handleEvent(simulatedEvent);
@@ -258,13 +279,9 @@ public class TwitchSpawnCommand {
 
     public static int executeModule(CommandContext<CommandSource> context) throws CommandSyntaxException {
         try {
-            String[] words = MessageArgument.getMessage(context, "tsl_action")
-                    .getUnformattedComponentText().split("\\s+");
+            String words = TSLWordsArgumentType.getWords(context, "tsl_action");
 
-            if (words.length == 0)
-                throw new CommandException(new StringTextComponent("Expected at least 1 TSL word!"));
-
-            List<String> wordTokens = TSLTokenizer.intoWords(String.join(" ", words));
+            List<String> wordTokens = TSLTokenizer.intoWords(words);
             String actionName = wordTokens.remove(0);
 
             TSLAction tslAction = TSLParser.parseAction(actionName, wordTokens);
@@ -291,7 +308,7 @@ public class TwitchSpawnCommand {
 
         ServerPlayerEntity streamerPlayer = context.getSource().asPlayer();
         TSLRuleset ruleset = ConfigManager.RULESET_COLLECTION.getRuleset(streamerNick);
-        TimeTaskQueue queue = ConfigManager.RULESET_COLLECTION.getQueue(streamerNick);
+        EventQueue eventQueue = ConfigManager.RULESET_COLLECTION.getQueue(streamerNick);
 
         Collection<TSLEvent> events = ruleset.getEvents();
         Iterator<TSLEvent> eventIterator = events.iterator();
@@ -308,24 +325,28 @@ public class TwitchSpawnCommand {
             eventArguments.actorNickname = "TesterKid";
 
             for (TSLAction action : event.getActions()) {
-                ITextComponent text = ITextComponent.Serializer.fromJsonLenient(
+                ITextComponent text = MCPHelpers.fromJsonLenient(
                         String.format("{text:\"Testing %s action\", color:\"dark_purple\"}", TSLActionKeyword.ofClass(action.getClass())));
                 STitlePacket packet = new STitlePacket(STitlePacket.Type.TITLE, text,
                         DEFAULT_FADE_IN_TICKS, DEFAULT_STAY_TICKS, DEFAULT_FADE_OUT_TICKS);
 
-                ITextComponent subtext = ITextComponent.Serializer.fromJsonLenient(
+                ITextComponent subtext = MCPHelpers.fromJsonLenient(
                         String.format("{text:\"Rules traversed: %.02f%%\", color:\"dark_purple\"}", 100 * (index + 1f) / ruleset.getRulesRaw().size()));
                 STitlePacket subtitlePacket = new STitlePacket(STitlePacket.Type.SUBTITLE, subtext,
                         DEFAULT_FADE_IN_TICKS, DEFAULT_STAY_TICKS, DEFAULT_FADE_OUT_TICKS);
 
-                queue.queue(() -> {
+                eventQueue.queue(() -> {
                     streamerPlayer.connection.sendPacket(packet);
                     streamerPlayer.connection.sendPacket(subtitlePacket);
                 });
-                queue.queue(() -> action.process(eventArguments));
+                eventQueue.queueSleep();
+                eventQueue.queue(() -> action.process(eventArguments));
+                eventQueue.queueSleep();
 
                 index++;
             }
+
+            eventQueue.updateThread();
         }
 
         TwitchSpawn.LOGGER.info("Tests queued for {}", streamerNick);

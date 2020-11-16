@@ -3,7 +3,7 @@ package net.programmer.igoodie.twitchspawn.tslanguage.action;
 import net.minecraft.command.CommandSource;
 import net.minecraft.entity.player.ServerPlayerEntity;
 import net.minecraft.item.ItemStack;
-import net.programmer.igoodie.twitchspawn.tslanguage.EventArguments;
+import net.programmer.igoodie.twitchspawn.tslanguage.event.EventArguments;
 import net.programmer.igoodie.twitchspawn.tslanguage.parser.TSLParser;
 import net.programmer.igoodie.twitchspawn.tslanguage.parser.TSLSyntaxError;
 
@@ -32,7 +32,10 @@ public class ClearAction extends ItemSelectiveAction {
             if (inventoryType == null) {
                 player.inventory.clear();
             } else {
-                getInventory(player, inventoryType).clear();
+                List<ItemStack> inventory = getInventory(player, inventoryType);
+                for (int i = 0; i < inventory.size(); i++) {
+                    inventory.set(i, ItemStack.EMPTY);
+                }
             }
 
         } else if (selectionType == SelectionType.RANDOM) {

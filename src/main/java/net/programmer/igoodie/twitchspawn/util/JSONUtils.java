@@ -46,4 +46,18 @@ public class JSONUtils {
         }
     }
 
+    public static String escape(String jsonString) {
+        StringBuilder escapedString = new StringBuilder();
+
+        for (char character : jsonString.toCharArray()) {
+            if (character == '\'' || character == '"' || character == '\\') {
+                escapedString.append("\\");
+            }
+
+            escapedString.append(character);
+        }
+
+        return escapedString.toString();
+    }
+
 }

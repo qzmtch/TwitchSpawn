@@ -1,7 +1,7 @@
 package net.programmer.igoodie.twitchspawn.tslanguage.predicate;
 
 import net.programmer.igoodie.twitchspawn.TwitchSpawn;
-import net.programmer.igoodie.twitchspawn.tslanguage.EventArguments;
+import net.programmer.igoodie.twitchspawn.tslanguage.event.EventArguments;
 import net.programmer.igoodie.twitchspawn.tslanguage.TSLFlowNode;
 import net.programmer.igoodie.twitchspawn.tslanguage.keyword.TSLPredicateProperty;
 import net.programmer.igoodie.twitchspawn.tslanguage.parser.TSLSyntaxError;
@@ -41,6 +41,12 @@ public class TSLPredicate implements TSLFlowNode {
             return next.process(args);
 
         return false;
+    }
+
+    @Override
+    public boolean willPerform(EventArguments args) {
+        Object value = TSLPredicateProperty.extractFrom(args, fieldAlias);
+        return comparator.compare(value) && next.willPerform(args);
     }
 
 }

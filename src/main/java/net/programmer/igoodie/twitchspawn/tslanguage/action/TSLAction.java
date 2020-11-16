@@ -11,15 +11,17 @@ import net.minecraft.util.text.StringTextComponent;
 import net.programmer.igoodie.twitchspawn.TwitchSpawn;
 import net.programmer.igoodie.twitchspawn.configuration.ConfigManager;
 import net.programmer.igoodie.twitchspawn.configuration.PreferencesConfig;
-import net.programmer.igoodie.twitchspawn.tslanguage.EventArguments;
+import net.programmer.igoodie.twitchspawn.tslanguage.event.EventArguments;
 import net.programmer.igoodie.twitchspawn.tslanguage.TSLFlowNode;
 import net.programmer.igoodie.twitchspawn.tslanguage.keyword.TSLActionKeyword;
 import net.programmer.igoodie.twitchspawn.tslanguage.parser.TSLRuleTokenizer;
 import net.programmer.igoodie.twitchspawn.tslanguage.parser.TSLSyntaxError;
 import net.programmer.igoodie.twitchspawn.util.ExpressionEvaluator;
+import net.programmer.igoodie.twitchspawn.util.MCPHelpers;
 
 import java.util.LinkedList;
 import java.util.List;
+import java.util.UUID;
 
 public abstract class TSLAction implements TSLFlowNode {
 
@@ -144,6 +146,11 @@ public abstract class TSLAction implements TSLFlowNode {
         return true;
     }
 
+    @Override
+    public boolean willPerform(EventArguments args) {
+        return true;
+    }
+
     protected String titleMessage(EventArguments args) {
         String title = this.isReflection()
                 ? ConfigManager.TITLES.getTextComponentRaw("reflection")
@@ -204,9 +211,12 @@ public abstract class TSLAction implements TSLFlowNode {
             return; // Stop here since message displaying is disabled
 
         // Form text and subtext components
-        ITextComponent text = ITextComponent.Serializer.fromJsonLenient(title);
-        ITextComponent subtext = ITextComponent.Serializer.fromJsonLenient(subtitle);
+        ITextComponent text = MCPHelpers.fromJsonLenient(title);
+        ITextComponent subtext = MCPHelpers.fromJsonLenient(subtitle);
 
+        if (subtext != null && subtext.getString().equals("NOTHING_0xDEADC0DE_0xDEADBEEF")) {
+            return; // Stop here since it was a  DISPLAYING NOTHING statement
+        }
 
         if (ConfigManager.PREFERENCES.messageDisplay == PreferencesConfig.MessageDisplay.TITLES) {
             // Form title and subtitle packets
@@ -225,8 +235,9 @@ public abstract class TSLAction implements TSLFlowNode {
         }
 
         if (ConfigManager.PREFERENCES.messageDisplay == PreferencesConfig.MessageDisplay.CHAT) {
-            if (text != null) player.sendMessage(new StringTextComponent(">> ").appendSibling(text));
-            if (subtext != null) player.sendMessage(new StringTextComponent(">> ").appendSibling(subtext));
+            UUID uuid = player.getUniqueID();
+            if (text != null) player.sendMessage(MCPHelpers.merge(new StringTextComponent(">> "), text), uuid);
+            if (subtext != null) player.sendMessage(MCPHelpers.merge(new StringTextComponent(">> "), subtext), uuid);
         }
     }
 

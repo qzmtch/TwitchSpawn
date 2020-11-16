@@ -8,6 +8,7 @@ import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.SoundEvent;
 import net.minecraft.util.text.TranslationTextComponent;
 import net.minecraftforge.common.MinecraftForge;
+import net.minecraftforge.event.RegisterCommandsEvent;
 import net.minecraftforge.event.RegistryEvent;
 import net.minecraftforge.event.entity.player.PlayerEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
@@ -21,14 +22,17 @@ import net.minecraftforge.fml.event.server.FMLServerStartingEvent;
 import net.minecraftforge.fml.event.server.FMLServerStoppingEvent;
 import net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext;
 import net.minecraftforge.fml.network.NetworkDirection;
+import net.programmer.igoodie.twitchspawn.client.gui.GlobalChatCooldownOverlay;
 import net.programmer.igoodie.twitchspawn.client.gui.StatusIndicatorOverlay;
 import net.programmer.igoodie.twitchspawn.command.RulesetNameArgumentType;
 import net.programmer.igoodie.twitchspawn.command.StreamerArgumentType;
 import net.programmer.igoodie.twitchspawn.command.TwitchSpawnCommand;
 import net.programmer.igoodie.twitchspawn.configuration.ConfigManager;
+import net.programmer.igoodie.twitchspawn.configuration.PreferencesConfig;
 import net.programmer.igoodie.twitchspawn.network.NetworkManager;
 import net.programmer.igoodie.twitchspawn.network.packet.StatusChangedPacket;
 import net.programmer.igoodie.twitchspawn.tracer.TraceManager;
+import net.programmer.igoodie.twitchspawn.udl.NotepadUDLUpdater;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -66,7 +70,9 @@ public class TwitchSpawn {
     }
 
     private void clientSetup(final FMLClientSetupEvent event) {
+        NotepadUDLUpdater.attemptUpdate();
         MinecraftForge.EVENT_BUS.register(StatusIndicatorOverlay.class);
+        MinecraftForge.EVENT_BUS.register(GlobalChatCooldownOverlay.class);
     }
 
     private void dedicatedServerSetup(final FMLDedicatedServerSetupEvent event) {}
@@ -78,6 +84,11 @@ public class TwitchSpawn {
     }
 
     @SubscribeEvent
+    public void onRegisterCommands(RegisterCommandsEvent event) {
+        TwitchSpawnCommand.register(event.getDispatcher());
+    }
+
+    @SubscribeEvent
     public void onServerAboutToStart(FMLServerAboutToStartEvent event) {
         SERVER = event.getServer();
         TRACE_MANAGER = new TraceManager();
@@ -85,7 +96,10 @@ public class TwitchSpawn {
 
     @SubscribeEvent
     public void onServerStarting(FMLServerStartingEvent event) {
-        TwitchSpawnCommand.register(event.getCommandDispatcher());
+        if (ConfigManager.PREFERENCES.autoStart == PreferencesConfig.AutoStartEnum.ENABLED) {
+            LOGGER.info("Auto-start is enabled. Attempting to start tracers.");
+            TRACE_MANAGER.start();
+        }
     }
 
     @SubscribeEvent
@@ -105,11 +119,22 @@ public class TwitchSpawn {
         String translationKey = TRACE_MANAGER.isRunning() ?
                 "commands.twitchspawn.status.on" : "commands.twitchspawn.status.off";
 
-        entity.sendMessage(new TranslationTextComponent(translationKey));
+        entity.sendMessage(new TranslationTextComponent(translationKey), entity.getUniqueID());
+
+        if (TRACE_MANAGER.isRunning())
+            TRACE_MANAGER.connectStreamer(entity.getName().getString());
 
         NetworkManager.CHANNEL.sendTo(new StatusChangedPacket(TRACE_MANAGER.isRunning()),
                 entity.connection.netManager,
                 NetworkDirection.PLAY_TO_CLIENT);
+    }
+
+    @SubscribeEvent
+    public void onPlayerLoggedOut(PlayerEvent.PlayerLoggedOutEvent event) {
+        ServerPlayerEntity entity = (ServerPlayerEntity) event.getPlayer();
+
+        if (TRACE_MANAGER.isRunning())
+            TRACE_MANAGER.disconnectStreamer(entity.getName().getString());
     }
 
 }

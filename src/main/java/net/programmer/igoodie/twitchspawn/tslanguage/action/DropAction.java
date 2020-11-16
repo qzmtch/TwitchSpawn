@@ -5,7 +5,7 @@ import com.mojang.brigadier.exceptions.CommandSyntaxException;
 import net.minecraft.command.arguments.ItemParser;
 import net.minecraft.entity.player.ServerPlayerEntity;
 import net.minecraft.item.ItemStack;
-import net.programmer.igoodie.twitchspawn.tslanguage.EventArguments;
+import net.programmer.igoodie.twitchspawn.tslanguage.event.EventArguments;
 import net.programmer.igoodie.twitchspawn.tslanguage.parser.TSLParser;
 import net.programmer.igoodie.twitchspawn.tslanguage.parser.TSLSyntaxError;
 import net.programmer.igoodie.twitchspawn.util.ExpressionEvaluator;
@@ -28,7 +28,7 @@ public class DropAction extends TSLAction {
         List<String> actionWords = actionPart(words);
 
         if (actionWords.size() != 1 && actionWords.size() != 2)
-            throw new TSLSyntaxError("Invalid length of words: " + actionWords);
+            throw new TSLSyntaxError("Invalid length of words: %s", actionWords);
 
         this.itemRaw = actionWords.get(0);
 

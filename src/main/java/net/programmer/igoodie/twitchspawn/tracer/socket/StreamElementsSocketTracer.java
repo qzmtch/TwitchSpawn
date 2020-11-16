@@ -1,49 +1,30 @@
-package net.programmer.igoodie.twitchspawn.tracer;
+package net.programmer.igoodie.twitchspawn.tracer.socket;
 
 import io.socket.client.Socket;
 import net.programmer.igoodie.twitchspawn.TwitchSpawn;
 import net.programmer.igoodie.twitchspawn.configuration.ConfigManager;
 import net.programmer.igoodie.twitchspawn.configuration.CredentialsConfig;
-import net.programmer.igoodie.twitchspawn.tslanguage.EventArguments;
+import net.programmer.igoodie.twitchspawn.tracer.Platform;
+import net.programmer.igoodie.twitchspawn.tracer.SocketIOTracer;
+import net.programmer.igoodie.twitchspawn.tracer.TraceManager;
+import net.programmer.igoodie.twitchspawn.tslanguage.event.EventArguments;
 import net.programmer.igoodie.twitchspawn.tslanguage.event.TSLEventPair;
+import net.programmer.igoodie.twitchspawn.tslanguage.event.builder.EventBuilder;
 import net.programmer.igoodie.twitchspawn.tslanguage.keyword.TSLEventKeyword;
 import net.programmer.igoodie.twitchspawn.util.JSONUtils;
 import org.json.JSONException;
 import org.json.JSONObject;
 
-import java.util.HashSet;
-import java.util.Set;
 import java.util.Timer;
 import java.util.TimerTask;
 
 public class StreamElementsSocketTracer extends SocketIOTracer {
 
-    public Set<Socket> authorized;
+    public boolean authorized;
 
     public StreamElementsSocketTracer(TraceManager manager) {
         super(Platform.STREAMELEMENTS, manager);
-        this.authorized = new HashSet<>();
-    }
-
-    @Override
-    public void start() {
-        TwitchSpawn.LOGGER.info("Starting StreamElements Tracer...");
-
-        // Create socket for every credential with StreamElements platform
-        ConfigManager.CREDENTIALS.streamers.stream()
-                .filter(streamer -> streamer.platform.equals(Platform.STREAMELEMENTS))
-                .forEach(this::createSocket);
-
-        this.sockets.forEach(Socket::connect);
-    }
-
-    @Override
-    public void stop() {
-        TwitchSpawn.LOGGER.info("Stopping StreamElements Tracer...");
-
-        this.sockets.forEach(Socket::disconnect);
-
-        this.sockets.clear();
+        this.authorized = false;
     }
 
     @Override
@@ -58,14 +39,14 @@ public class StreamElementsSocketTracer extends SocketIOTracer {
 
         socket.on("authenticated", foo -> {
             TwitchSpawn.LOGGER.info("Connected to StreamElements Socket API with {}'s token successfully!", streamer.twitchNick);
-            authorized.add(socket);
+            authorized = true;
         });
 
         // TODO: refactor dis, duh :V
         new Timer().schedule(new TimerTask() {
             @Override
             public void run() {
-                if (manager.isRunning() && !authorized.contains(socket)) {
+                if (manager.isRunning() && !authorized) {
                     TwitchSpawn.LOGGER.info("Disconnected from {}'s StreamElements Socket connection. (unauthorized)", streamer.minecraftNick);
                     manager.stop(null, streamer.twitchNick + " unauthorized by the socket server");
                 }
@@ -89,27 +70,30 @@ public class StreamElementsSocketTracer extends SocketIOTracer {
 
         String eventType = JSONUtils.extractFrom(event, "type", String.class, null);
         String eventAccount = JSONUtils.extractFrom(event, "provider", String.class, "streamelements");
+        TSLEventPair eventPair = new TSLEventPair(eventType, eventAccount);
+
         JSONObject data = JSONUtils.extractFrom(event, "data", JSONObject.class, new JSONObject());
 
         TwitchSpawn.LOGGER.info("Received StreamElements packet {} -> {}",
-                new TSLEventPair(eventType, eventAccount), data);
+                eventPair, data);
+
+        // Fetch the appropriate builder
+        EventBuilder eventBuilder = TSLEventKeyword.getBuilder(eventPair);
 
         // Unregistered event alias
-        if (TSLEventKeyword.ofPair(eventType, eventAccount) == null)
+        if (eventBuilder == null)
             return; // Stop here, do not handle
 
-        // Refine incoming data into EventArguments model
-        EventArguments eventArguments = new EventArguments(eventType, eventAccount);
-        eventArguments.streamerNickname = streamer.minecraftNick;
-        eventArguments.actorNickname = JSONUtils.extractFrom(data, "username", String.class, null);
-        eventArguments.message = JSONUtils.extractFrom(data, "message", String.class, null);
-        eventArguments.donationAmount = JSONUtils.extractNumberFrom(data, "amount", 0.0).doubleValue();
-        eventArguments.donationCurrency = JSONUtils.extractFrom(data, "currency", String.class, null);
-        eventArguments.subscriptionMonths = JSONUtils.extractNumberFrom(data, "amount", 0).intValue();
-//        eventArguments.raiderCount = JSONUtils.extractNumberFrom(message, "raiders", 0).intValue(); // Raids aren't supported (?)
-        eventArguments.viewerCount = JSONUtils.extractNumberFrom(data, "amount ", 0).intValue();
-        eventArguments.subscriptionTier = extractTier(data, "tier");
-        // TODO: add gifted
+        // Build arguments
+        EventArguments eventArguments = eventBuilder.build(streamer, eventPair,
+                data, Platform.STREAMELEMENTS);
+
+        // Build failed for an unknown reason
+        if (eventArguments == null) {
+            TwitchSpawn.LOGGER.warn("{} was not able to build arguments from incoming data -> {}",
+                    eventBuilder.getClass().getSimpleName(), data.toString());
+            return;
+        }
 
         // Pass the model to the handler
         ConfigManager.RULESET_COLLECTION.handleEvent(eventArguments);

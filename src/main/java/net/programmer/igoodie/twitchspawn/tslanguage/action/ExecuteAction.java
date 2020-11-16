@@ -3,7 +3,7 @@ package net.programmer.igoodie.twitchspawn.tslanguage.action;
 import net.minecraft.command.CommandSource;
 import net.minecraft.entity.player.ServerPlayerEntity;
 import net.programmer.igoodie.twitchspawn.TwitchSpawn;
-import net.programmer.igoodie.twitchspawn.tslanguage.EventArguments;
+import net.programmer.igoodie.twitchspawn.tslanguage.event.EventArguments;
 import net.programmer.igoodie.twitchspawn.tslanguage.parser.TSLParser;
 import net.programmer.igoodie.twitchspawn.tslanguage.parser.TSLSyntaxError;
 
@@ -24,7 +24,7 @@ public class ExecuteAction extends TSLAction {
         if (!actionWords.stream().allMatch(word -> word.startsWith("/")))
             throw new TSLSyntaxError("Every command must start with '/' character");
 
-        this.commands = new LinkedList<>(words);
+        this.commands = new LinkedList<>(actionWords);
     }
 
     @Override
@@ -39,6 +39,16 @@ public class ExecuteAction extends TSLAction {
                 int result = TwitchSpawn.SERVER
                         .getCommandManager()
                         .handleCommand(source, replaceExpressions(command, args));
+
+                if (result <= 0) { // Wohooo we knew iGoodie liked hacky solutions. ( ? :/ )
+                    // If it yielded an error, and not worked as expected
+                    // Then turn on the feedback, and run it again! Brilliant! What could go wrong? :))))))
+                    CommandSource newSource = player.getCommandSource()
+                            .withPermissionLevel(9999);
+                    TwitchSpawn.SERVER
+                            .getCommandManager()
+                            .handleCommand(newSource, replaceExpressions(command, args));
+                }
 
                 TwitchSpawn.LOGGER.info("Executed (Status:{}) -> {}", result, replaceExpressions(command, args));
             });

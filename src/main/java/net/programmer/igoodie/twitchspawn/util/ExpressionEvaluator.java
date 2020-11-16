@@ -1,6 +1,6 @@
 package net.programmer.igoodie.twitchspawn.util;
 
-import net.programmer.igoodie.twitchspawn.tslanguage.EventArguments;
+import net.programmer.igoodie.twitchspawn.tslanguage.event.EventArguments;
 
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
@@ -42,7 +42,13 @@ public class ExpressionEvaluator {
             return args.eventName;
 
         if (expression.equals("message"))
+            return JSONUtils.escape(args.message);
+
+        if (expression.equals("message_unescaped"))
             return args.message;
+
+        if (expression.equals("title"))
+            return args.rewardTitle;
 
         if (expression.equals("actor"))
             return args.actorNickname;

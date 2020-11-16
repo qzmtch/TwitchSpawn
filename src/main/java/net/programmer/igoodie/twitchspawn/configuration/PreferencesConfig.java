@@ -23,6 +23,10 @@ public class PreferencesConfig {
         DISABLED, TITLES, CHAT
     }
 
+    public enum AutoStartEnum {
+        DISABLED, ENABLED
+    }
+
     public static PreferencesConfig create(File file) {
         try {
             // File is not there, create an empty file
@@ -52,6 +56,10 @@ public class PreferencesConfig {
             preferencesConfig.notificationVolume = config.get("notificationVolume");
             preferencesConfig.notificationPitch = config.get("notificationPitch");
             preferencesConfig.notificationDelay = config.getInt("notificationDelay");
+            preferencesConfig.autoStart = getEnum(config, "autoStart", AutoStartEnum.class);
+            preferencesConfig.chatGlobalCooldown = config.get("chatGlobalCooldown");
+            preferencesConfig.chatIndividualCooldown = config.get("chatIndividualCooldown");
+            preferencesConfig.chatWarnings = config.get("chatWarnings").equals("enabled");
 
             config.close();
 
@@ -110,6 +118,15 @@ public class PreferencesConfig {
             return (value == -1.0) || (0.0 <= value && value <= 1.0);
         });
         spec.defineInRange("notificationDelay", 5000, 0, Integer.MAX_VALUE);
+        defineEnum(spec, "autoStart", AutoStartEnum.DISABLED, AutoStartEnum.class);
+        spec.defineInRange("chatGlobalCooldown", 1000, 0, Integer.MAX_VALUE);
+        spec.defineInRange("chatIndividualCooldown", 1000, 0, Integer.MAX_VALUE);
+        spec.define("chatWarnings", "disabled", rawValue -> {
+            if (!(rawValue instanceof String))
+                return false;
+            String value = ((String) rawValue);
+            return value.equals("enabled") || value.equals("disabled");
+        });
 
         return spec;
     }
@@ -160,5 +177,11 @@ public class PreferencesConfig {
     public double notificationVolume;
     public double notificationPitch;
     public int notificationDelay;
+
+    public AutoStartEnum autoStart;
+
+    public int chatGlobalCooldown;
+    public int chatIndividualCooldown;
+    public boolean chatWarnings;
 
 }

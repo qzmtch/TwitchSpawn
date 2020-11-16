@@ -1,24 +1,31 @@
 package net.programmer.igoodie.twitchspawn.tracer;
 
+import io.socket.client.Socket;
 import net.minecraft.command.CommandSource;
+import net.minecraft.entity.player.ServerPlayerEntity;
 import net.minecraft.util.text.TranslationTextComponent;
 import net.minecraftforge.fml.network.NetworkDirection;
 import net.programmer.igoodie.twitchspawn.TwitchSpawn;
+import net.programmer.igoodie.twitchspawn.configuration.ConfigManager;
+import net.programmer.igoodie.twitchspawn.configuration.CredentialsConfig;
 import net.programmer.igoodie.twitchspawn.network.NetworkManager;
 import net.programmer.igoodie.twitchspawn.network.packet.StatusChangedPacket;
+import net.programmer.igoodie.twitchspawn.tracer.chat.TwitchChatTracer;
+import net.programmer.igoodie.twitchspawn.tracer.socket.StreamElementsSocketTracer;
+import net.programmer.igoodie.twitchspawn.tracer.socket.StreamlabsSocketTracer;
+import net.programmer.igoodie.twitchspawn.tracer.socket.TwitchPubSubTracer;
 
-import java.util.LinkedList;
-import java.util.List;
+import java.util.*;
 
 public class TraceManager {
 
     private boolean running;
-    private List<SocketIOTracer> socketIOTracers;
+    private Map<String, Socket> sockets; // mc_nick.lowercase() -> sio_socket
+    private List<WebSocketTracer> webSocketTracers;
 
     public TraceManager() {
-        this.socketIOTracers = new LinkedList<>();
-        this.socketIOTracers.add(new StreamlabsSocketTracer(this));
-        this.socketIOTracers.add(new StreamElementsSocketTracer(this));
+        this.sockets = new HashMap<>();
+        this.webSocketTracers = new LinkedList<>();
     }
 
     public boolean isRunning() {
@@ -32,18 +39,28 @@ public class TraceManager {
 
         TwitchSpawn.LOGGER.info("Starting all the tracers...");
 
-        // Start tracers
-        socketIOTracers.forEach(SocketIOTracer::start);
-
         running = true;
 
-        TwitchSpawn.SERVER.getPlayerList().sendMessage(
-                new TranslationTextComponent("commands.twitchspawn.start.success"), true);
-        TwitchSpawn.SERVER.getPlayerList().getPlayers().forEach(player -> {
+        // Start Websocket tracers
+        this.webSocketTracers.add(new TwitchPubSubTracer(this)); // TODO: Extract to a worker, not master
+        this.webSocketTracers.add(new TwitchChatTracer(this)); // TODO: Extract to a worker, not master
+        webSocketTracers.forEach(WebSocketTracer::start);
+
+        // Connect online players from credentials.toml
+        for (CredentialsConfig.Streamer streamer : ConfigManager.CREDENTIALS.streamers) {
+            if (TwitchSpawn.SERVER.getPlayerList().getPlayerByUsername(streamer.minecraftNick) != null) {
+                connectStreamer(streamer.minecraftNick);
+            }
+        }
+
+        for (ServerPlayerEntity player : TwitchSpawn.SERVER.getPlayerList().getPlayers()) {
+            UUID uuid = player.getUniqueID();
+            TranslationTextComponent successText = new TranslationTextComponent("commands.twitchspawn.start.success");
+            player.getEntity().sendMessage(successText, uuid);
             NetworkManager.CHANNEL.sendTo(new StatusChangedPacket(true),
                     player.connection.netManager,
                     NetworkDirection.PLAY_TO_CLIENT);
-        });
+        }
     }
 
     public void stop(CommandSource source, String reason) {
@@ -51,21 +68,73 @@ public class TraceManager {
 
         TwitchSpawn.LOGGER.info("Stopping all the tracers...");
 
-        // Stop tracers
-        socketIOTracers.forEach(SocketIOTracer::stop);
-
         running = false;
 
+        // Stop Websocket tracers and reset the list
+        webSocketTracers.forEach(WebSocketTracer::stop);
+        webSocketTracers.clear();
+
+        // Disconnect each alive socket and reset the map
+        for (Socket socket : sockets.values()) {
+            socket.disconnect();
+        }
+        sockets.clear();
+
         if (TwitchSpawn.SERVER != null) {
-            TwitchSpawn.SERVER.getPlayerList().sendMessage(
-                    new TranslationTextComponent("commands.twitchspawn.stop.success",
-                            source == null ? "Server" : source.getName(), reason), true);
-            TwitchSpawn.SERVER.getPlayerList().getPlayers().forEach(player -> {
+            for (ServerPlayerEntity player : TwitchSpawn.SERVER.getPlayerList().getPlayers()) {
+                UUID uuid = player.getUniqueID();
+                TranslationTextComponent successText = new TranslationTextComponent("commands.twitchspawn.stop.success",
+                        source == null ? "Server" : source.getName(), reason);
+                player.getEntity().sendMessage(successText, uuid);
                 NetworkManager.CHANNEL.sendTo(new StatusChangedPacket(false),
                         player.connection.netManager,
                         NetworkDirection.PLAY_TO_CLIENT);
-            });
+            }
         }
+    }
+
+    public void connectStreamer(String nickname) {
+        if (!isRunning()) throw new IllegalStateException("Cannot connect streamer when TwitchSpawn is stopped.");
+
+        CredentialsConfig.Streamer streamerConfig = ConfigManager.CREDENTIALS.streamers.stream()
+                .filter(streamer -> streamer.minecraftNick.equalsIgnoreCase(nickname))
+                .findFirst().orElse(null);
+
+        if (streamerConfig == null) {
+            TwitchSpawn.LOGGER.warn("{} is not set as a Streamer in credentials.toml. Skipping connection for them.", nickname);
+            return;
+        }
+
+        SocketIOTracer tracer;
+
+        if (streamerConfig.platform == Platform.STREAMLABS) {
+            tracer = new StreamlabsSocketTracer(this);
+
+        } else if (streamerConfig.platform == Platform.STREAMELEMENTS) {
+            tracer = new StreamElementsSocketTracer(this);
+
+        } else {
+            // How is this even possible?
+            throw new InternalError("TODOTODOOOO");
+        }
+
+        Socket socket = tracer.createSocket(streamerConfig);
+        sockets.put(nickname.toLowerCase(), socket);
+        socket.connect();
+    }
+
+    public void disconnectStreamer(String nickname) {
+        if (!isRunning()) throw new IllegalStateException("Cannot disconnect streamer when TwitchSpawn is stopped.");
+
+        Socket socket = sockets.get(nickname.toLowerCase());
+
+        if (socket == null) {
+            TwitchSpawn.LOGGER.warn("{} is not set as a Streamer in credentials.toml. Skipping disconnection for them.", nickname);
+            return;
+        }
+
+        socket.disconnect();
+        sockets.remove(nickname.toLowerCase());
     }
 
 }

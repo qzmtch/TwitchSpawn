@@ -2,10 +2,12 @@ package net.programmer.igoodie.twitchspawn.tslanguage;
 
 import net.programmer.igoodie.twitchspawn.TwitchSpawn;
 import net.programmer.igoodie.twitchspawn.configuration.ConfigManager;
+import net.programmer.igoodie.twitchspawn.tslanguage.event.EventArguments;
 import net.programmer.igoodie.twitchspawn.tslanguage.event.TSLEvent;
 import net.programmer.igoodie.twitchspawn.tslanguage.event.TSLEventPair;
 import net.programmer.igoodie.twitchspawn.tslanguage.keyword.TSLEventKeyword;
-import net.programmer.igoodie.twitchspawn.util.TimeTaskQueue;
+import net.programmer.igoodie.twitchspawn.util.CooldownBucket;
+import net.programmer.igoodie.twitchspawn.eventqueue.EventQueue;
 
 import java.util.HashMap;
 import java.util.List;
@@ -16,7 +18,7 @@ public class TSLRulesetCollection {
 
     private TSLRuleset defaultRuleset;
     private Map<String, TSLRuleset> streamerRulesets; // Maps lowercase nicks to TSLTree
-    private Map<String, TimeTaskQueue> eventQueues; // Maps lowercase nicks to TimeTaskQueue
+    private Map<String, EventQueue> eventQueues; // Maps lowercase nicks to TimeTaskQueue
 
     public TSLRulesetCollection(TSLRuleset defaultTree, List<TSLRuleset> streamerTrees) {
         if (defaultTree == null)
@@ -32,7 +34,11 @@ public class TSLRulesetCollection {
         }
     }
 
-    public void handleEvent(EventArguments args) {
+    public boolean handleEvent(EventArguments args) {
+        return handleEvent(args, null);
+    }
+
+    public boolean handleEvent(EventArguments args, CooldownBucket cooldownBucket) {
         TwitchSpawn.LOGGER.info("Handling (for {}) arguments {}", args.streamerNickname, args);
 
         // Fetch event pair and keyword
@@ -42,7 +48,7 @@ public class TSLRulesetCollection {
         // Event pair is not known by TSL
         if (eventKeyword == null) {
             TwitchSpawn.LOGGER.info("Event pair not known by TSL -> {}. Skipped handling", eventPair);
-            return;
+            return false;
         }
 
         // Fetch associated Ruleset
@@ -59,13 +65,16 @@ public class TSLRulesetCollection {
         // No handler was bound, skip handling
         if (eventNode == null) {
             TwitchSpawn.LOGGER.info("No rule was found for {}. Skipped handling", eventKeyword);
-            return;
+            return false;
         }
 
         // Queue incoming event arguments
-        getQueue(args.streamerNickname).queue(() ->
-                TwitchSpawn.SERVER.execute(() -> eventNode.process(args)));
+        EventQueue eventQueue = getQueue(args.streamerNickname);
+        eventQueue.queue(eventNode, args, cooldownBucket);
+        eventQueue.queueSleep();
+        eventQueue.updateThread();
         TwitchSpawn.LOGGER.info("Queued handler for {} event.", eventKeyword);
+        return true;
     }
 
     public boolean hasStreamer(String streamerNick) {
@@ -86,11 +95,11 @@ public class TSLRulesetCollection {
         return streamerRulesets.get(streamerNick.toLowerCase());
     }
 
-    public TimeTaskQueue getQueue(String streamerNick) {
-        TimeTaskQueue queue = eventQueues.get(streamerNick.toLowerCase());
+    public EventQueue getQueue(String streamerNick) {
+        EventQueue queue = eventQueues.get(streamerNick.toLowerCase());
 
         if (queue == null) { // Lazy init
-            queue = new TimeTaskQueue(ConfigManager.PREFERENCES.notificationDelay);
+            queue = new EventQueue(ConfigManager.PREFERENCES.notificationDelay);
             eventQueues.put(streamerNick.toLowerCase(), queue);
         }
 
@@ -98,7 +107,7 @@ public class TSLRulesetCollection {
     }
 
     public void clearQueue() {
-        eventQueues.values().forEach(TimeTaskQueue::clearAll);
+        eventQueues.values().forEach(EventQueue::reset);
     }
 
 }

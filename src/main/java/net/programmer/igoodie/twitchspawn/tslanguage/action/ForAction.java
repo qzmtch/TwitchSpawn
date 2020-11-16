@@ -1,7 +1,7 @@
 package net.programmer.igoodie.twitchspawn.tslanguage.action;
 
 import net.minecraft.entity.player.ServerPlayerEntity;
-import net.programmer.igoodie.twitchspawn.tslanguage.EventArguments;
+import net.programmer.igoodie.twitchspawn.tslanguage.event.EventArguments;
 import net.programmer.igoodie.twitchspawn.tslanguage.keyword.TSLActionKeyword;
 import net.programmer.igoodie.twitchspawn.tslanguage.parser.TSLParser;
 import net.programmer.igoodie.twitchspawn.tslanguage.parser.TSLSyntaxError;
@@ -75,7 +75,7 @@ public class ForAction extends TSLAction {
             return ExpressionEvaluator.fromArgs(expression, args);
         });
 
-        return Integer.parseInt(iterationCountEvaluated);
+        return Double.valueOf(iterationCountEvaluated).intValue();
     }
 
 }

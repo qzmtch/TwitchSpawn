@@ -1,5 +1,7 @@
 package net.programmer.igoodie.twitchspawn.tslanguage;
 
+import net.programmer.igoodie.twitchspawn.tslanguage.event.EventArguments;
+
 public interface TSLFlowNode {
 
     /**
@@ -21,5 +23,12 @@ public interface TSLFlowNode {
      * @return True if successfully processed given args
      */
     boolean process(EventArguments args);
+
+    /**
+     * Checks whether given args will trigger an action or not
+     *
+     * @return True if given args will trigger an action to be performed
+     */
+    boolean willPerform(EventArguments args);
 
 }
